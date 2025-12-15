@@ -18,7 +18,14 @@ except ImportError:
 OLLAMA_API_BASE = "http://localhost:11434"
 OLLAMA_CHAT_URL = f"{OLLAMA_API_BASE}/api/chat"
 OLLAMA_TAGS_URL = f"{OLLAMA_API_BASE}/api/tags"
-TOGETHER_API_KEY = "tgp_v1_H9J4-xD4_n5_N8AUGiFpwkLpanweZuGjhy1ONQtblTI"
+
+# Get Together.AI API key from Streamlit secrets or environment variable
+try:
+    TOGETHER_API_KEY = st.secrets["together_ai"]["api_key"]
+except (KeyError, FileNotFoundError):
+    # Fallback for local development
+    TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY", "tgp_v1_H9J4-xD4_n5_N8AUGiFpwkLpanweZuGjhy1ONQtblTI")
+
 TOGETHER_API_URL = "https://api.together.xyz/v1/chat/completions"
 HISTORY_DIR = "receipt_history"
 
