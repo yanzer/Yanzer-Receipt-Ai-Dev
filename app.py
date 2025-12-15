@@ -1,4 +1,8 @@
 import streamlit as st
+
+# MUST be the first Streamlit command
+st.set_page_config(page_title="ReceiptGuard AI", page_icon="🧾", layout="wide")
+
 import requests
 import json
 import base64
@@ -31,8 +35,6 @@ HISTORY_DIR = "receipt_history"
 
 if not os.path.exists(HISTORY_DIR):
     os.makedirs(HISTORY_DIR)
-
-st.set_page_config(page_title="ReceiptGuard AI", page_icon="🧾", layout="wide")
 
 st.title("🧾 ReceiptGuard AI")
 
