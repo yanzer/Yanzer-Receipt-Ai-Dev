@@ -563,49 +563,77 @@ with col2:
 with tab2:
     st.header("📜 Execution Logs")
     
-    # Reload files to ensure up to date
-    log_files = sorted(glob.glob(f"{HISTORY_DIR}/*.json"), reverse=True)
+    # Show loading spinner while loading logs
+    with st.spinner("Loading execution logs..."):
+        # Reload files to ensure up to date
+        log_files = sorted(glob.glob(f"{HISTORY_DIR}/*.json"), reverse=True)
+        
+        logs_data = []
+        for fpath in log_files:
+            try:
+                with open(fpath, 'r') as f:
+                    d = json.load(f)
+                    
+                    # Extract Data
+                    fname = os.path.basename(fpath)
+                    ts = d.get('timestamp', 'N/A')
+                    merchant = d.get('extracted_data', {}).get('merchant_name') or d.get('merchant') or 'Unknown'
+                    model = d.get('usage_stats', {}).get('Model', 'Unknown')
+                    t_in = d.get('usage_stats', {}).get('Prompt Tokens', 0)
+                    t_out = d.get('usage_stats', {}).get('Output Tokens', 0)
+                    
+                    # Time Taken
+                    timings = d.get('timings', {})
+                    duration = timings.get('total_wall_time', 'N/A')
+                    
+                    logs_data.append({
+                        "Date & Time": ts,
+                        "Merchant": merchant,
+                        "Model": model,
+                        "Time Taken": duration,
+                        "Tokens In": t_in,
+                        "Tokens Out": t_out,
+                        "File Path": fpath
+                    })
+            except Exception as e:
+                continue
     
-    logs_data = []
-    for fpath in log_files:
-        try:
-            with open(fpath, 'r') as f:
-                d = json.load(f)
-                
-                # Extract Data
-                fname = os.path.basename(fpath)
-                ts = d.get('timestamp', 'N/A')
-                merchant = d.get('extracted_data', {}).get('merchant_name') or d.get('merchant') or 'Unknown'
-                model = d.get('usage_stats', {}).get('Model', 'Unknown')
-                t_in = d.get('usage_stats', {}).get('Prompt Tokens', 0)
-                t_out = d.get('usage_stats', {}).get('Output Tokens', 0)
-                
-                # Time Taken
-                timings = d.get('timings', {})
-                duration = timings.get('total_wall_time', 'N/A')
-                
-                logs_data.append({
-                    "Date & Time": ts,
-                    "Merchant": merchant,
-                    "Model": model,
-                    "Time Taken": duration,
-                    "Tokens In": t_in,
-                    "Tokens Out": t_out,
-                    "File Path": fpath
-                })
-        except Exception as e:
-            continue
-            
     if logs_data:
         if pd:
-            st.markdown("**Click on a row to view details and navigate to Analysis Workspace**")
+            st.caption(f"**Total Executions:** {len(logs_data)}")
             
-            # Display table with clickable rows
+            # Table Headers
+            header_cols = st.columns([2, 2, 2, 1.5, 1, 1, 2])
+            header_cols[0].markdown("**Date & Time**")
+            header_cols[1].markdown("**Merchant**")
+            header_cols[2].markdown("**Model**")
+            header_cols[3].markdown("**Time Taken**")
+            header_cols[4].markdown("**Tokens In**")
+            header_cols[5].markdown("**Tokens Out**")
+            header_cols[6].markdown("**Actions**")
+            
+            st.divider()
+            
+            # Display table with action buttons
             for idx, log in enumerate(logs_data):
-                cols = st.columns([2, 2, 2, 1.5, 1, 1])
+                cols = st.columns([2, 2, 2, 1.5, 1, 1, 2])
                 
-                # Make Date & Time clickable
-                if cols[0].button(log['Date & Time'], key=f"log_btn_{idx}", use_container_width=True):
+                cols[0].write(log['Date & Time'])
+                cols[1].write(log['Merchant'])
+                cols[2].write(log['Model'])
+                cols[3].write(log['Time Taken'])
+                cols[4].write(str(log['Tokens In']))
+                cols[5].write(str(log['Tokens Out']))
+                
+                # Action buttons in the last column
+                action_cols = cols[6].columns(2)
+                
+                # View JSON button
+                if action_cols[0].button("📄 JSON", key=f"json_btn_{idx}", use_container_width=True):
+                    st.session_state.selected_log_for_json = idx
+                
+                # View in Analysis Workspace button
+                if action_cols[1].button("🔍 View", key=f"view_btn_{idx}", use_container_width=True):
                     # Load this record into session state and switch to Analysis tab
                     with open(log['File Path'], 'r') as f:
                         record = json.load(f)
@@ -617,25 +645,23 @@ with tab2:
                         st.session_state.current_file_path = log['File Path']
                         st.session_state.active_tab = 'analysis'  # Signal to switch tab
                         st.rerun()
+            
+            # Show JSON viewer if a log is selected
+            if 'selected_log_for_json' in st.session_state:
+                st.divider()
+                st.subheader("🔍 JSON Details")
                 
-                cols[1].write(log['Merchant'])
-                cols[2].write(log['Model'])
-                cols[3].write(log['Time Taken'])
-                cols[4].write(str(log['Tokens In']))
-                cols[5].write(str(log['Tokens Out']))
-            
-            st.divider()
-            st.subheader("🔍 Inspect Log Details (JSON)")
-            
-            # Selection for JSON view
-            selected_idx = st.selectbox("Select a log entry to view JSON:", range(len(logs_data)), format_func=lambda i: f"{logs_data[i]['Date & Time']} - {logs_data[i]['Merchant']}")
-            
-            if selected_idx is not None:
-                selected_row = logs_data[selected_idx]
-                st.write(f"**Viewing Log for:** {selected_row['Merchant']} ({selected_row['Date & Time']})")
-                
-                with open(selected_row['File Path'], 'r') as f:
-                    st.json(json.load(f))
+                selected_idx = st.session_state.selected_log_for_json
+                if selected_idx < len(logs_data):
+                    selected_row = logs_data[selected_idx]
+                    st.write(f"**Viewing Log for:** {selected_row['Merchant']} ({selected_row['Date & Time']})")
+                    
+                    with open(selected_row['File Path'], 'r') as f:
+                        st.json(json.load(f))
+                    
+                    if st.button("✖️ Close JSON View"):
+                        del st.session_state.selected_log_for_json
+                        st.rerun()
         else:
             st.table(logs_data)
             st.warning("Pandas not installed. Install pandas for a better table view.")
