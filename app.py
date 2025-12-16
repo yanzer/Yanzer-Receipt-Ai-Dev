@@ -69,8 +69,8 @@ with st.sidebar:
     # History Section
     st.header("📜 History")
     
-    # Load history files
-    history_files = sorted(glob.glob(f"{HISTORY_DIR}/*.json"), reverse=True)
+    # Load history files - sorted by modification time (newest first)
+    history_files = sorted(glob.glob(f"{HISTORY_DIR}/*.json"), key=os.path.getmtime, reverse=True)
     
     if st.button("➕ New Analysis", type="primary"):
         for key in ['uploaded_file_id', 'image_base64', 'analysis_result', 'chat_history', 'usage_stats', 'current_file_path', 'timings']:
@@ -323,7 +323,13 @@ def chat_api(history, new_question, image_base64, model):
         return requests.post(OLLAMA_CHAT_URL, json=payload, stream=True)
 
 # Main UI
-# Main UI
+# Check if we need to switch to analysis tab from logs
+if 'active_tab' in st.session_state and st.session_state.active_tab == 'analysis':
+    default_tab = 0
+    del st.session_state.active_tab
+else:
+    default_tab = 0
+
 tab1, tab2 = st.tabs(["Analysis Workspace", "Execution Logs"])
 
 with tab1:
@@ -464,10 +470,20 @@ with col2:
         # Validation / Fraud Status
         st.subheader("Verdict")
         verdict = validation.get('conclusion', '').lower()
+        
+        # Extract confidence if available (look for percentage in reasoning or conclusion)
+        confidence = "N/A"
+        reasoning_text = validation.get('reasoning', '')
+        import re as regex_module
+        confidence_match = regex_module.search(r'(\d+)%', reasoning_text)
+        if confidence_match:
+            confidence = confidence_match.group(1) + "%"
+        
         if 'yes' in verdict or 'fraud' in verdict:
             st.error(f"⚠️ FRAUD SUSPECTED: {validation.get('conclusion')}")
         else:
-             st.success(f"✅ Receipt Validated: {validation.get('conclusion')}")
+            # Valid receipt - show enhanced message
+            st.success(f"✅ Receipt Validated: No Major Issues, {confidence} Confidence")
         
         st.info(f"**Reasoning:** {validation.get('reasoning')}")
             
@@ -582,14 +598,36 @@ with tab2:
             
     if logs_data:
         if pd:
-            df = pd.DataFrame(logs_data)
-            st.dataframe(df, use_container_width=True, column_config={
-                "File Path": None # Hide File Path
-            })
+            st.markdown("**Click on a row to view details and navigate to Analysis Workspace**")
             
-            st.subheader("🔍 Inspect Log Details")
+            # Display table with clickable rows
+            for idx, log in enumerate(logs_data):
+                cols = st.columns([2, 2, 2, 1.5, 1, 1])
+                
+                # Make Date & Time clickable
+                if cols[0].button(log['Date & Time'], key=f"log_btn_{idx}", use_container_width=True):
+                    # Load this record into session state and switch to Analysis tab
+                    with open(log['File Path'], 'r') as f:
+                        record = json.load(f)
+                        st.session_state.image_base64 = record['image_base64']
+                        st.session_state.analysis_result = record['analysis_result']
+                        st.session_state.chat_history = record['chat_history']
+                        st.session_state.usage_stats = record.get('usage_stats', {})
+                        st.session_state.timings = record.get('timings', {})
+                        st.session_state.current_file_path = log['File Path']
+                        st.session_state.active_tab = 'analysis'  # Signal to switch tab
+                        st.rerun()
+                
+                cols[1].write(log['Merchant'])
+                cols[2].write(log['Model'])
+                cols[3].write(log['Time Taken'])
+                cols[4].write(str(log['Tokens In']))
+                cols[5].write(str(log['Tokens Out']))
             
-            # Selection
+            st.divider()
+            st.subheader("🔍 Inspect Log Details (JSON)")
+            
+            # Selection for JSON view
             selected_idx = st.selectbox("Select a log entry to view JSON:", range(len(logs_data)), format_func=lambda i: f"{logs_data[i]['Date & Time']} - {logs_data[i]['Merchant']}")
             
             if selected_idx is not None:
